@@ -141,6 +141,38 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy to EKS') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "===== CONFIGURING EKS ====="
+
+                    aws eks update-kubeconfig \
+                        --region ${AWS_REGION} \
+                        --name jenkins-eks-demo
+
+                    echo "===== DEPLOYING APPLICATION ====="
+
+                    sed "s|jenkins-maven-demo:1|jenkins-maven-demo:${IMAGE_TAG}|g" \
+                        k8s/deployment.yaml | kubectl apply -f -
+
+                    kubectl apply -f k8s/service.yaml
+
+                    echo "===== WAITING FOR ROLLOUT ====="
+
+                    kubectl rollout status deployment/jenkins-maven-demo \
+                        --timeout=180s
+
+                    echo "===== DEPLOYMENT COMPLETED ====="
+
+                    kubectl get deployments
+                    kubectl get pods -o wide
+                    kubectl get services
+                '''
+            }
+        }
     }
 
     post {
