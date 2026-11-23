@@ -1,4 +1,3 @@
-```groovy
 pipeline {
     agent any
 
@@ -28,13 +27,9 @@ pipeline {
                     export JAVA_HOME=/opt/java17
                     export PATH=$JAVA_HOME/bin:$PATH
 
-                    echo "Checking Java version"
                     java -version
-
-                    echo "Checking Maven version"
                     mvn -version
 
-                    echo "Building application and running tests"
                     mvn clean verify
                 '''
             }
@@ -54,7 +49,8 @@ pipeline {
                         export JAVA_HOME=/opt/java17
                         export PATH=$JAVA_HOME/bin:$PATH
 
-                        echo "Checking SonarQube Cloud connectivity"
+                        echo "Checking SonarQube connectivity"
+
                         curl -sS -o /dev/null \
                           -w "HTTP Status: %{http_code}\\n" \
                           https://sonarcloud.io/api/server/version
@@ -78,13 +74,8 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                    echo "Building Docker image"
-
-                    docker build \
-                      -t ${ECR_REPO}:${IMAGE_TAG} .
-
-                    docker tag \
-                      ${ECR_REPO}:${IMAGE_TAG} \
+                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                    docker tag ${ECR_REPO}:${IMAGE_TAG} \
                       ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
                 '''
             }
@@ -94,8 +85,6 @@ pipeline {
             steps {
                 sh '''
                     export AWS_PAGER=""
-
-                    echo "Logging into AWS ECR"
 
                     aws ecr get-login-password \
                       --region ${AWS_REGION} | \
@@ -109,10 +98,7 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 sh '''
-                    echo "Pushing image to ECR"
-
-                    docker push \
-                      ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+                    docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
                 '''
             }
         }
@@ -120,11 +106,11 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Build, tests, SonarQube analysis and ECR push completed!'
+            echo 'SUCCESS: Build, tests, SonarQube and ECR push completed!'
         }
 
         failure {
-            echo 'FAILURE: Check the Jenkins Console Output for the exact error.'
+            echo 'FAILURE: Check Jenkins Console Output.'
         }
 
         always {
@@ -132,4 +118,3 @@ pipeline {
         }
     }
 }
-```
