@@ -1,4 +1,4 @@
-
+```groovy
 pipeline {
     agent any
 
@@ -28,9 +28,13 @@ pipeline {
                     export JAVA_HOME=/opt/java17
                     export PATH=$JAVA_HOME/bin:$PATH
 
+                    echo "Checking Java version"
                     java -version
+
+                    echo "Checking Maven version"
                     mvn -version
 
+                    echo "Building application and running tests"
                     mvn clean verify
                 '''
             }
@@ -45,8 +49,17 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        set -e
+
                         export JAVA_HOME=/opt/java17
                         export PATH=$JAVA_HOME/bin:$PATH
+
+                        echo "Checking SonarQube Cloud connectivity"
+                        curl -sS -o /dev/null \
+                          -w "HTTP Status: %{http_code}\\n" \
+                          https://sonarcloud.io/api/server/version
+
+                        echo "Starting SonarQube analysis"
 
                         mvn -B \
                           org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
@@ -54,6 +67,8 @@ pipeline {
                           -Dsonar.projectKey=${SONAR_PROJECT} \
                           -Dsonar.host.url=${SONAR_URL} \
                           -Dsonar.token="$SONAR_TOKEN" \
+                          -Dsonar.java.binaries=target/classes \
+                          -Dsonar.verbose=true \
                           -Dsonar.qualitygate.wait=true
                     '''
                 }
@@ -63,6 +78,8 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
+                    echo "Building Docker image"
+
                     docker build \
                       -t ${ECR_REPO}:${IMAGE_TAG} .
 
@@ -78,6 +95,8 @@ pipeline {
                 sh '''
                     export AWS_PAGER=""
 
+                    echo "Logging into AWS ECR"
+
                     aws ecr get-login-password \
                       --region ${AWS_REGION} | \
                     docker login \
@@ -90,6 +109,8 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 sh '''
+                    echo "Pushing image to ECR"
+
                     docker push \
                       ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
                 '''
@@ -99,11 +120,11 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Build, tests, SonarQube and ECR push completed!'
+            echo 'SUCCESS: Build, tests, SonarQube analysis and ECR push completed!'
         }
 
         failure {
-            echo 'FAILURE: Check Jenkins Console Output.'
+            echo 'FAILURE: Check the Jenkins Console Output for the exact error.'
         }
 
         always {
@@ -111,3 +132,4 @@ pipeline {
         }
     }
 }
+```
