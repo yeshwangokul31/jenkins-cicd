@@ -27,9 +27,13 @@ pipeline {
                     export JAVA_HOME=/opt/java17
                     export PATH=$JAVA_HOME/bin:$PATH
 
+                    echo "===== JAVA VERSION ====="
                     java -version
+
+                    echo "===== MAVEN VERSION ====="
                     mvn -version
 
+                    echo "===== BUILD AND TEST ====="
                     mvn clean verify
                 '''
             }
@@ -46,16 +50,20 @@ pipeline {
                     sh '''
                         set -e
 
-                        export JAVA_HOME=/opt/java17
+                        # Use Java 21 for SonarScanner
+                        export JAVA_HOME=/opt/java/openjdk
                         export PATH=$JAVA_HOME/bin:$PATH
 
-                        echo "Checking SonarQube connectivity"
+                        echo "===== SONAR JAVA VERSION ====="
+                        java -version
+
+                        echo "===== SONARQUBE CONNECTIVITY ====="
 
                         curl -sS -o /dev/null \
                           -w "HTTP Status: %{http_code}\\n" \
                           https://sonarcloud.io/api/server/version
 
-                        echo "Starting SonarQube analysis"
+                        echo "===== SONARQUBE ANALYSIS ====="
 
                         mvn -B \
                           org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
@@ -63,6 +71,7 @@ pipeline {
                           -Dsonar.projectKey=${SONAR_PROJECT} \
                           -Dsonar.host.url=${SONAR_URL} \
                           -Dsonar.token="$SONAR_TOKEN" \
+                          -Dsonar.scanner.skipJreProvisioning=true \
                           -Dsonar.java.binaries=target/classes \
                           -Dsonar.verbose=true \
                           -Dsonar.qualitygate.wait=true
@@ -74,8 +83,13 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                    docker tag ${ECR_REPO}:${IMAGE_TAG} \
+                    echo "===== DOCKER BUILD ====="
+
+                    docker build \
+                      -t ${ECR_REPO}:${IMAGE_TAG} .
+
+                    docker tag \
+                      ${ECR_REPO}:${IMAGE_TAG} \
                       ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
                 '''
             }
@@ -85,6 +99,8 @@ pipeline {
             steps {
                 sh '''
                     export AWS_PAGER=""
+
+                    echo "===== AWS ECR LOGIN ====="
 
                     aws ecr get-login-password \
                       --region ${AWS_REGION} | \
@@ -98,7 +114,10 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 sh '''
-                    docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+                    echo "===== PUSH IMAGE TO ECR ====="
+
+                    docker push \
+                      ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
                 '''
             }
         }
