@@ -156,9 +156,9 @@ pipeline {
                     echo "===== DEPLOYING APPLICATION ====="
 
                     sed "s|jenkins-maven-demo:1|jenkins-maven-demo:${IMAGE_TAG}|g" \
-                        k8s/deployment.yaml | kubectl apply -f -
+                        kubernetes/deployment.yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/service.yaml
+                    kubectl apply -f kubernetes/service.yaml
 
                     echo "===== WAITING FOR ROLLOUT ====="
 
