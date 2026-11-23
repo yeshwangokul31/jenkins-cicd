@@ -30,6 +30,7 @@ pipeline {
 
                     java -version
                     mvn -version
+
                     mvn clean verify
                 '''
             }
@@ -47,7 +48,8 @@ pipeline {
                         export JAVA_HOME=/opt/java17
                         export PATH=$JAVA_HOME/bin:$PATH
 
-                        mvn sonar:sonar \
+                        mvn -B \
+                          org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
                           -Dsonar.organization=${SONAR_ORG} \
                           -Dsonar.projectKey=${SONAR_PROJECT} \
                           -Dsonar.host.url=${SONAR_URL} \
@@ -97,11 +99,11 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Build, tests, SonarQube analysis and ECR push completed!'
+            echo 'SUCCESS: Build, tests, SonarQube and ECR push completed!'
         }
 
         failure {
-            echo 'FAILURE: Check Jenkins Console Output for the failed stage.'
+            echo 'FAILURE: Check Jenkins Console Output.'
         }
 
         always {
