@@ -3,24 +3,47 @@ pipeline {
     agent any
 
     environment {
-        SONAR_URL = 'https://sonarcloud.io'
+        AWS_REGION      = 'ap-south-1'
+        AWS_ACCOUNT_ID  = '102186470246'
+        ECR_REPO        = 'jenkins-maven-demo'
+        ECR_REGISTRY    = '102186470246.dkr.ecr.ap-south-1.amazonaws.com'
+        IMAGE_TAG       = "${BUILD_NUMBER}"
+
+        SONAR_ORG       = 'yeshwangokul31'
+        SONAR_PROJECT   = 'yeshwangokul31_jenkins-cicd'
+        SONAR_URL       = 'https://sonarcloud.io'
     }
 
     stages {
 
-        stage('Sonar Server Connectivity') {
+        stage('Checkout') {
+            steps {
+                echo '===== CHECKOUT SOURCE CODE ====='
+                checkout scm
+            }
+        }
+
+        stage('Build and Test') {
             steps {
                 sh '''
-                    echo "===== SONAR SERVER CONNECTIVITY ====="
+                    set -e
 
-                    curl -sS -o /dev/null \
-                        -w "HTTP Status: %{http_code}\\n" \
-                        ${SONAR_URL}/api/server/version
+                    export JAVA_HOME=/opt/java17
+                    export PATH=$JAVA_HOME/bin:$PATH
+
+                    echo "===== JAVA VERSION ====="
+                    java -version
+
+                    echo "===== MAVEN VERSION ====="
+                    mvn -version
+
+                    echo "===== BUILD AND TEST ====="
+                    mvn clean verify
                 '''
             }
         }
 
-        stage('Sonar Token Verification') {
+        stage('SonarQube Analysis') {
             steps {
                 withCredentials([
                     string(
@@ -29,36 +52,108 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        set +x
+                        set -e
 
-                        echo "===== SONAR TOKEN VERIFICATION ====="
+                        export JAVA_HOME=/opt/java/openjdk
+                        export PATH=$JAVA_HOME/bin:$PATH
 
-                        STATUS=$(curl -sS \
-                            -o /tmp/sonar-response.txt \
-                            -w "%{http_code}" \
-                            -H "Authorization: Bearer $SONAR_TOKEN" \
-                            https://api.sonarcloud.io/analysis/engine)
+                        echo "===== SONAR JAVA VERSION ====="
+                        java -version
 
-                        echo "Sonar API HTTP Status: $STATUS"
+                        echo "===== SONARCLOUD CONNECTIVITY ====="
 
-                        echo "===== API RESPONSE ====="
-                        cat /tmp/sonar-response.txt
-                        echo
+                        curl -sS -o /dev/null \
+                            -w "HTTP Status: %{http_code}\\n" \
+                            https://sonarcloud.io/api/server/version
 
-                        rm -f /tmp/sonar-response.txt
+                        echo "===== SONARQUBE ANALYSIS STARTED ====="
+
+                        mvn -B \
+                            org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
+                            -Dsonar.organization=${SONAR_ORG} \
+                            -Dsonar.projectKey=${SONAR_PROJECT} \
+                            -Dsonar.host.url=${SONAR_URL} \
+                            -Dsonar.token="$SONAR_TOKEN" \
+                            -Dsonar.scanner.skipJreProvisioning=true \
+                            -Dsonar.java.binaries=target/classes \
+                            -Dsonar.verbose=true \
+                            -Dsonar.qualitygate.wait=true
+
+                        echo "===== SONARQUBE ANALYSIS COMPLETED ====="
                     '''
                 }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "===== DOCKER IMAGE BUILD ====="
+
+                    docker build \
+                        -t ${ECR_REPO}:${IMAGE_TAG} .
+
+                    docker tag \
+                        ${ECR_REPO}:${IMAGE_TAG} \
+                        ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+
+                    echo "===== DOCKER IMAGE CREATED ====="
+
+                    docker images ${ECR_REPO}
+                '''
+            }
+        }
+
+        stage('ECR Login') {
+            steps {
+                sh '''
+                    set -e
+
+                    export AWS_PAGER=""
+
+                    echo "===== AWS ECR LOGIN ====="
+
+                    aws ecr get-login-password \
+                        --region ${AWS_REGION} | \
+                    docker login \
+                        --username AWS \
+                        --password-stdin ${ECR_REGISTRY}
+                '''
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "===== PUSHING IMAGE TO ECR ====="
+
+                    docker push \
+                        ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+
+                    echo "===== ECR IMAGE PUSH SUCCESSFUL ====="
+
+                    echo "IMAGE URI:"
+                    echo "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'SonarQube connectivity and token verification stages completed.'
+            echo 'SUCCESS: Build, Test, SonarQube Analysis and ECR Push completed!'
         }
 
         failure {
-            echo 'SonarQube verification failed. Check the console output.'
+            echo 'FAILURE: Check Jenkins Console Output for details.'
+        }
+
+        always {
+            echo "Pipeline execution completed. Build number: ${BUILD_NUMBER}"
         }
     }
 }
